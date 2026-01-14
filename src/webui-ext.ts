@@ -1,4 +1,7 @@
-export { invoke, callback };
+export {
+    callback,
+    invoke
+};
 
 async function invoke(method: string, ...args: any[]) {
     let fn = (window as any)[method];

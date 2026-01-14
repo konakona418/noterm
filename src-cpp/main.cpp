@@ -1,7 +1,8 @@
-#include "webui.hpp"
+#include <webui.hpp>
+
+#include <cstring>
 #include <iostream>
 #include <string>
-#include <cstring>
 
 #include "lib.hpp"
 
@@ -9,6 +10,13 @@ int main(int argc, char** argv) {
     webui::window window;
 
     bool is_dev = false;
+    int err = 0;
+    webui_main(window, webui_context(is_dev, argc, argv), &err);
+    if (err != 0) {
+        std::cout << "Failed to initialize WebUI context." << std::endl;
+        return err;
+    }
+
     if (argc >= 4) {
         if (std::strcmp(argv[1], "--run-dev") == 0) {
             int node_port = std::stoi(argv[2]);
@@ -17,7 +25,7 @@ int main(int argc, char** argv) {
             std::cout << "Running in development mode" << std::endl;
             std::cout << "Node.js port: " << node_port << std::endl;
             std::cout << "WebUI port: " << webui_port << std::endl;
-            
+
             if (!window.set_port(webui_port)) {
                 std::cout << "Failed to set WebUI port" << std::endl;
             }
@@ -33,8 +41,6 @@ int main(int argc, char** argv) {
         window.set_root_folder("./webui");
         window.show_wv("index.html");
     }
-    int err = 0;
-    webui_main(window, webui_context(is_dev, argc, argv), &err);
     webui::wait();
 
     return err;

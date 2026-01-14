@@ -1,168 +1,247 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { onBeforeUnmount, onMounted, ref } from "vue";
 import { invoke, callback } from "./webui-ext"
 
-const greetMsg = ref("");
-const name = ref("");
-const timer = ref(0);
+import { Terminal } from "@xterm/xterm";
+import { FitAddon } from "@xterm/addon-fit";
+import { WebglAddon } from "@xterm/addon-webgl";
+import "@xterm/xterm/css/xterm.css";
 
-async function greet() {
-  invoke("greetCpp", name.value).then(msg => {
-    greetMsg.value = msg;
-  });
+const terminalElement = ref<HTMLElement | null>(null);
+let terminal: Terminal | null = null;
+let fitAddon: FitAddon | null = null;
+let webglAddon: WebglAddon | null = null;
+
+function debounce(fn: Function, delay: number) {
+  let timer: number | null = null;
+  return (...args: any[]) => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), delay);
+  };
 }
+const minimize = () => invoke("webui_minimize");
+const closeWin = () => invoke("webui_close");
 
-callback("timer", () => {
-  timer.value++;
+const handleResize = debounce(async () => {
+  if (terminal && fitAddon) {
+    fitAddon.fit();
+    await invoke("webui_resize_terminal", terminal.cols, terminal.rows);
+  }
+}, 150);
+
+onMounted(() => {
+  if (terminalElement.value) {
+    terminal = new Terminal({
+      cols: 80,
+      rows: 24,
+      fontFamily: "Cascadia Mono, 'Microsoft YaHei Mono', 'PingFang SC', 'Source Han Sans SC', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
+      fontSize: 18,
+      allowTransparency: true,
+      theme: {
+        background: '#00000000',
+        foreground: '#FFFFFF',
+      },
+    });
+
+    webglAddon = new WebglAddon();
+    try {
+      const webglAddon = new WebglAddon();
+      terminal.loadAddon(webglAddon);
+    } catch (e) {
+      console.warn("WebGL addon could not be loaded, falling back to canvas", e);
+    }
+
+    fitAddon = new FitAddon();
+    terminal.loadAddon(fitAddon);
+
+    terminal.open(terminalElement.value);
+    requestAnimationFrame(() => {
+      if (fitAddon) {
+        fitAddon.fit();
+      }
+    });
+
+    window.addEventListener("resize", handleResize);
+
+    terminal.onData(async (data) => {
+      await invoke("webui_send_input", data);
+      console.log("Terminal input:", data);
+    });
+
+    callback("webui_ready", async () => {
+      if (terminal) {
+        await invoke("webui_init_terminal", terminal.cols, terminal.rows);
+        fitAddon?.fit();
+        terminal.focus();
+      }
+    });
+
+    callback("webui_receive_output", async (output: Uint8Array) => {
+      console.log("Received output size:", output.byteLength);
+      terminal?.write(output);
+    });
+  }
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("resize", handleResize);
+  webglAddon?.dispose();
+  terminal?.dispose();
 });
 
 </script>
-
 <template>
-  <main class="container">
-    <h1>Welcome to WebUI + Vue</h1>
+  <div class="window-wrapper">
+    <div id="ui-container">
+      <div id="titlebar">
+        <span id="title">NoTerm</span>
+        <div id="buttons">
+          <span class="button minimize" @click="minimize"></span>
+          <span class="button close" @click="closeWin"></span>
+        </div>
+      </div>
 
-    <div class="row">
-      <a href="https://vitejs.dev" target="_blank">
-        <img src="/vite.svg" class="logo vite" alt="Vite logo" />
-      </a>
-      <a href="https://vuejs.org/" target="_blank">
-        <img src="./assets/vue.svg" class="logo vue" alt="Vue logo" />
-      </a>
-      <a href="https://github.com/webui-dev/webui" target="_blank">
-        <img src="/webui.svg" class="logo webui" alt="WebUI logo" />
-      </a>
+      <div id="content">
+        <div ref="terminalElement" class="terminal-container"></div>
+      </div>
     </div>
-    <p>Click on the Vite, Vue, and WebUI logos to learn more.</p>
-
-    <form class="row" @submit.prevent="greet">
-      <input id="greet-input" v-model="name" placeholder="Enter a name..." />
-      <button type="submit">Greet</button>
-    </form>
-    <p>{{ greetMsg }}</p>
-    <p>{{ timer }}</p>
-  </main>
+  </div>
 </template>
 
 <style scoped>
-.logo.vite:hover {
-  filter: drop-shadow(0 0 2em #747bff);
+.window-wrapper {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 12px;
+  background: transparent;
+  display: flex;
+  box-sizing: border-box;
 }
 
-.logo.vue:hover {
-  filter: drop-shadow(0 0 2em #249b73);
-}
-
-.logo.webui:hover {
-  filter: drop-shadow(0 0 2em #2A6699);
-}
-
-</style>
-<style>
-:root {
-  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 400;
-
-  color: #0f0f0f;
-  background-color: #f6f6f6;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  -webkit-text-size-adjust: 100%;
-}
-
-.container {
-  margin: 0;
-  padding-top: 10vh;
+#ui-container {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  text-align: center;
+  background: rgba(30, 30, 30, 0.8);
+  border-radius: 12px;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: 0.75s;
-}
-
-.row {
+#titlebar {
+  height: 38px;
+  background: rgba(0, 0, 0, 0.1);
   display: flex;
-  justify-content: center;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  flex-shrink: 0;
+  -webkit-app-region: drag;
+  user-select: none;
 }
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
+#title {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
 }
 
-a:hover {
-  color: #535bf2;
+#buttons {
+  display: flex;
+  gap: 10px;
+  -webkit-app-region: no-drag;
 }
 
-h1 {
-  text-align: center;
-}
-
-input,
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  color: #0f0f0f;
-  background-color: #ffffff;
-  transition: border-color 0.25s;
-  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
-}
-
-button {
+.button {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
   cursor: pointer;
 }
 
-button:hover {
-  border-color: #396cd8;
-}
-button:active {
-  border-color: #396cd8;
-  background-color: #e8e8e8;
+.close {
+  background: #ff5f57;
 }
 
-input,
-button {
-  outline: none;
+.minimize {
+  background: #ffbd2e;
 }
 
-#greet-input {
-  margin-right: 5px;
+#content {
+  flex: 1;
+  position: relative;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  overflow: hidden;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    color: #f6f6f6;
-    background-color: #2f2f2f;
-  }
-
-  a:hover {
-    color: #24c8db;
-  }
-
-  input,
-  button {
-    color: #ffffff;
-    background-color: #0f0f0f98;
-  }
-  button:active {
-    background-color: #0f0f0f69;
-  }
+.terminal-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: transparent;
 }
 
+:deep(.xterm) {
+  height: 100%;
+  padding: 8px;
+}
+
+:deep(.xterm-viewport) {
+  background-color: transparent;
+  overflow: hidden;
+}
+
+:deep(.xterm-screen) {
+  width: 100%;
+  height: 100%;
+}
+
+:deep(*) {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+:deep(*::-webkit-scrollbar) {
+  display: none;
+}
+
+:deep(.xterm-viewport),
+:deep(.xterm-screen),
+:deep(.xterm-main-canvas),
+:deep(.xterm-char-measure-element) {
+  background-color: transparent;
+}
+
+:deep(.xterm-webgl-canvas) {
+  background-color: transparent;
+}
+</style>
+
+<style>
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent !important;
+}
+
+@font-face {
+  font-family: 'Cascadia Mono';
+  src: url('./assets/fonts/CaskaydiaMonoNerdFontMono-Regular.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}
 </style>

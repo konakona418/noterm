@@ -2,7 +2,7 @@
     "targetOs": "Windows",
     "targetArchitecture": "x64",
     "cpp": {
-        "targetName": "webui-template",
+        "targetName": "noterm",
         "defaultBuildTargetType": "Default",
         "compiler": {
             "name": "g++",
@@ -10,12 +10,14 @@
         },
         "buildSystem": {
             "name": "CMake",
-            "path": "/* path to cmake */",
-            "options": {}
+            "path": "cmake",
+            "options": {
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+            }
         },
         "generator": {
             "name": "Ninja",
-            "path": "/* path to ninja */"
+            "path": "ninja"
         },
         "directory": {
             "source": "./src-cpp",

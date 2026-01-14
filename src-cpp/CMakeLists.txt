@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.29)
-project(webui-template)
+project(noterm)
 
 set(CMAKE_CXX_STANDARD 17)
 
@@ -21,7 +21,12 @@ if(WIN32)
     FetchContent_MakeAvailable(${FC_NAME})
 endif()
 
-set(BASE_SOURCES main.cpp lib.hpp lib.cpp)
+set(BASE_SOURCES main.cpp lib.cpp)
+
+if (WIN32)
+    list(APPEND BASE_SOURCES win32.cpp)
+endif()
 
 add_executable(${PROJECT_NAME} ${BASE_SOURCES})
+target_include_directories(${PROJECT_NAME} PRIVATE vendors/concurrentqueue)
 target_link_libraries(${PROJECT_NAME} PRIVATE webui)
