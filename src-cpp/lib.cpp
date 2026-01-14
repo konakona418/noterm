@@ -50,6 +50,7 @@ void webui_main(webui::window& window, webui_context ctx, int* err) {
     window.set_size(1280, 720);
     window.set_frameless(true);
     window.set_transparent(true);
+    window.set_resizable(false);
     window.set_center();
 
     window.bind(init_cb_name,

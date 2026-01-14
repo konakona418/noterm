@@ -27,6 +27,11 @@ if (WIN32)
     list(APPEND BASE_SOURCES win32.cpp)
 endif()
 
-add_executable(${PROJECT_NAME} ${BASE_SOURCES})
+if (WIN32 AND NOT DEBUG)
+    add_executable(${PROJECT_NAME} WIN32 ${BASE_SOURCES})
+else()
+    add_executable(${PROJECT_NAME} ${BASE_SOURCES})
+endif()
+
 target_include_directories(${PROJECT_NAME} PRIVATE vendors/concurrentqueue)
 target_link_libraries(${PROJECT_NAME} PRIVATE webui)

@@ -5,12 +5,14 @@ import { invoke, callback } from "./webui-ext"
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
+import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
 
 const terminalElement = ref<HTMLElement | null>(null);
 let terminal: Terminal | null = null;
 let fitAddon: FitAddon | null = null;
 let webglAddon: WebglAddon | null = null;
+let webLinksAddon: WebLinksAddon | null = null;
 
 function debounce(fn: Function, delay: number) {
   let timer: number | null = null;
@@ -53,6 +55,9 @@ onMounted(() => {
 
     fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
+
+    webLinksAddon = new WebLinksAddon();
+    terminal.loadAddon(webLinksAddon);
 
     terminal.open(terminalElement.value);
     requestAnimationFrame(() => {
@@ -103,9 +108,22 @@ onBeforeUnmount(() => {
 
       <div id="content">
         <div ref="terminalElement" class="terminal-container"></div>
+        <div class="terminal-overlay"></div>
       </div>
     </div>
   </div>
+
+  <svg style="display: none;">
+    <defs>
+      <filter id="crt-glow">
+        <feGaussianBlur stdDeviation="8" result="blur" />
+        <feComposite in="SourceGraphic" in2="blur" operator="over" />
+      </filter>
+      <filter id="noiseFilter">
+        <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch" />
+      </filter>
+    </defs>
+  </svg>
 </template>
 
 <style scoped>
@@ -190,9 +208,46 @@ onBeforeUnmount(() => {
   background: transparent;
 }
 
+.terminal-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  background: radial-gradient(circle at center,
+      transparent 0%,
+      rgba(0, 0, 0, 0.15) 100%);
+
+  backdrop-filter: blur(0.5px) brightness(1.2);
+  z-index: 10;
+}
+
+.terminal-overlay::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(rgba(18, 16, 16, 0) 50%,
+      rgba(0, 0, 0, 0.1) 50%);
+  background-size: 100% 6px;
+  z-index: 11;
+  animation: scanlines 0.8s linear infinite;
+}
+
+@keyframes scanlines {
+  0% {
+    background-position: 0 0;
+  }
+
+  100% {
+    background-position: 0 6px;
+  }
+}
+
 :deep(.xterm) {
   height: 100%;
   padding: 8px;
+  filter: url(#crt-glow);
 }
 
 :deep(.xterm-viewport) {
@@ -239,7 +294,7 @@ body {
 
 @font-face {
   font-family: 'Cascadia Mono';
-  src: url('./assets/fonts/CaskaydiaMonoNerdFontMono-Regular.ttf') format('truetype');
+  src: url('./assets/fonts/CaskaydiaMonoNerdFontMono.ttf') format('truetype');
   font-weight: normal;
   font-style: normal;
   font-display: block;
