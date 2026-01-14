@@ -1,22 +1,13 @@
-# webui-vue-template
+# noterm
 
-## Description
+Not even a terminal
 
-A template for combining Vue.js and WebUI for building desktop applications.
+VSCode has an integrated terminal and VSCode is based on Electron which is too heavy
 
-It provides a basic code structure for bootstrapping a Vue.js - TS - WebUI application.
+Mine is based on webview which is way much lighter
 
-## Usage
+Why not use mine
 
-1. Clone the repository.
-2. Install dependencies with `npm install`.
-3. Initialize the WebUI CMake project with `npm run webui init`.
+![image](/img/screenshot.png)
 
-To run the application under development mode, use `npm run webui dev`.
-
-To build the application for production, use `npm run webui build`.
-
-Additional parameters can be passed to the `webui` script, such as:
-
-- `no-reload`: do not regenerate the CMake project.
-- `no-cpp`: do not rebuild the C++ part of the application.
+And mine has some super fancy VFX
