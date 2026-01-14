@@ -39,6 +39,7 @@ onMounted(() => {
       fontFamily: "Cascadia Mono, 'Microsoft YaHei Mono', 'PingFang SC', 'Source Han Sans SC', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
       fontSize: 18,
       allowTransparency: true,
+      smoothScrollDuration: 250,
       theme: {
         background: '#00000000',
         foreground: '#FFFFFF',
@@ -133,7 +134,6 @@ onBeforeUnmount(() => {
   left: 0;
   right: 0;
   bottom: 0;
-  padding: 12px;
   background: transparent;
   display: flex;
   box-sizing: border-box;
@@ -148,7 +148,6 @@ onBeforeUnmount(() => {
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
   overflow: hidden;
 }
 

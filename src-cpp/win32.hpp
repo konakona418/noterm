@@ -46,7 +46,7 @@ namespace noterm {
 
         struct PseudoConsole {
         public:
-            using OutputQueue = moodycamel::ConcurrentQueue<std::string>;
+            using OutputQueue = moodycamel::BlockingConcurrentQueue<std::string>;
             using InputQueue = moodycamel::BlockingConcurrentQueue<std::string>;
 
             void init(std::string_view proc_name, int cols, int rows);
@@ -63,7 +63,7 @@ namespace noterm {
 
             std::optional<std::string> read_output() {
                 std::string output;
-                if (m_output_queue.try_dequeue(output)) {
+                if (m_output_queue.wait_dequeue_timed(output, std::chrono::milliseconds(10))) {
                     return output;
                 }
                 return std::nullopt;
