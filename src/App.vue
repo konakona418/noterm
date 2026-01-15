@@ -66,10 +66,6 @@ function onRequestPty(index: number, cols: number, rows: number) {
     });
 }
 
-function onTabClick(i: number) {
-  active.value = i;
-}
-
 const minimize = () =>
   invoke('webui_minimize').catch((err) => {
     console.error('Failed to minimize window:', err);
