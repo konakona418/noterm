@@ -9,6 +9,7 @@ const emitEvent = defineEmits<{
     (event: 'update:activeIndex', index: number): void;
     (event: 'tab-click', tab: { id?: string; title: string }): void;
     (event: 'add-tab'): void;
+    (event: 'close-tab', index: number): void;
 }>();
 
 const defaultTabs = [
@@ -29,6 +30,10 @@ function onTabClick(i: number) {
     emitEvent('tab-click', (localTabs.value as any)[i]);
 }
 
+function onClose(i: number) {
+    emitEvent('close-tab', i);
+}
+
 function emitAddTab() {
     emitEvent('add-tab');
 }
@@ -40,6 +45,7 @@ function emitAddTab() {
             <li v-for="(t, i) in localTabs" :key="t.id ?? i" :class="['tab', { active: active === i }]"
                 @click="onTabClick(i)">
                 <span class="tab-title">{{ t.title }}</span>
+                <button class="tab-close" @click.stop="onClose(i)">×</button>
             </li>
         </ul>
         <div class="tab-actions">
@@ -112,6 +118,21 @@ function emitAddTab() {
 
 .tab-action:hover {
     background: rgba(255, 255, 255, 0.02);
+    color: #fff;
+}
+
+.tab-close {
+    margin-left: 8px;
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.6);
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 6px;
+}
+
+.tab-close:hover {
+    background: rgba(255, 255, 255, 0.03);
     color: #fff;
 }
 </style>

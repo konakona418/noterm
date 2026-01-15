@@ -4,9 +4,11 @@ import { invoke, callback } from './webui-ext';
 import TerminalContainer from './Components/TerminalContainer.vue';
 import TabBar from './Components/TabBar.vue';
 
-type Session = { title: string; ptyId?: number | null };
+type Session = { uid: string; title: string; ptyId?: number | null };
 
-const sessions = ref<Session[]>([{ title: 'powershell', ptyId: null }]);
+const genUid = () => (typeof crypto !== 'undefined' && typeof (crypto as any).randomUUID === 'function') ? (crypto as any).randomUUID() : (Date.now().toString(36) + Math.random().toString(36).slice(2));
+
+const sessions = ref<Session[]>([{ uid: genUid(), title: 'powershell', ptyId: null }]);
 const active = ref(0);
 
 // whether the native/webui connection is established
@@ -14,18 +16,20 @@ const webuiReady = ref(false);
 
 // pending requests keyed by token -> session index
 const pendingByToken = new Map<number, number>();
-const idToIndex = new Map<number, number>();
+// map PTY id -> session uid so we can route output to the correct component
+const idToUid = new Map<number, string>();
 let nextRequestToken = 1;
 
-const terminalRefs = ref<any[]>([]);
+const terminalRefs = ref<Record<string, any>>({});
 // temporary buffer for outputs received before a terminal ref is ready
 const pendingOutput = new Map<number, Uint8Array[]>();
 
-function setTerminalRef(index: number) {
+function setTerminalRef(uid: string) {
   return (el: any) => {
-    terminalRefs.value[index] = el;
+    terminalRefs.value[uid] = el;
     // if this session already has a ptyId, flush any pending output
-    const ptyId = sessions.value[index]?.ptyId;
+    const idx = sessions.value.findIndex((s) => s.uid === uid);
+    const ptyId = idx >= 0 ? sessions.value[idx]?.ptyId : null;
     if (ptyId != null) {
       const pending = pendingOutput.get(ptyId);
       if (pending && pending.length > 0 && el && typeof el.writeOutput === 'function') {
@@ -37,11 +41,9 @@ function setTerminalRef(index: number) {
 }
 
 function createTab(title = 'bash') {
-  sessions.value.push({ title, ptyId: null });
+  sessions.value.push({ uid: genUid(), title, ptyId: null });
   // select the newly created tab
   active.value = sessions.value.length - 1;
-  // keep terminalRefs aligned
-  terminalRefs.value.push(null);
 }
 
 function onRequestPty(index: number, cols: number, rows: number) {
@@ -86,7 +88,7 @@ function handleCreated(id: number, token: number) {
   }
   pendingByToken.delete(token);
   sessions.value[idx].ptyId = id;
-  idToIndex.set(id, idx);
+  idToUid.set(id, sessions.value[idx].uid);
 }
 
 function handleOutputAvailable(id: number) {
@@ -103,21 +105,60 @@ function handleReceiveOutput(data: Uint8Array) {
   const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
   const id = dv.getInt32(0, true);
   const payload = new Uint8Array(data.buffer, data.byteOffset + 4, data.byteLength - 4);
-  const idx = idToIndex.get(id);
+  const uid = idToUid.get(id);
 
-  console.log('Received output for PTY id', id, 'mapped to session index', idx);
+  console.log('Received output for PTY id', id, 'mapped to session uid', uid);
 
-  if (idx === undefined) return;
-  const child = terminalRefs.value[idx];
+  if (uid === undefined) return;
+  const child = terminalRefs.value[uid];
   if (child && typeof child.writeOutput === 'function') {
     child.writeOutput(payload);
   } else {
-    console.warn('No terminal ref or writeOutput method for session index', idx, '- buffering output');
+    console.warn('No terminal ref or writeOutput method for session uid', uid, '- buffering output');
     // buffer until the component ref is ready
     const ptyId = id;
     const arr = pendingOutput.get(ptyId) ?? [];
     arr.push(payload);
     pendingOutput.set(ptyId, arr);
+  }
+}
+
+function closeTab(i: number) {
+  if (i < 0 || i >= sessions.value.length) return;
+  const session = sessions.value[i];
+  const ptyId = session.ptyId;
+  if (ptyId != null) {
+    invoke('webui_close_pty', ptyId).catch((err) => {
+      console.error('Failed to close PTY', ptyId, err);
+    });
+    // cleanup maps/buffers
+    idToUid.delete(ptyId);
+    pendingOutput.delete(ptyId);
+  }
+  // remove session and terminal ref
+  const uid = session.uid;
+  sessions.value.splice(i, 1);
+  // remove ref entry for this uid
+  delete terminalRefs.value[uid];
+  // rebuild idToUid map to keep mappings accurate
+  idToUid.clear();
+  sessions.value.forEach((s) => {
+    if (s.ptyId != null) idToUid.set(s.ptyId, s.uid);
+  });
+
+  // If no sessions remain, exit the app
+  if (sessions.value.length === 0) {
+    // close the window / host
+    closeWin();
+    return;
+  }
+
+  // adjust active index: if the closed tab was before the current active, shift active left
+  if (active.value > i) {
+    active.value = Math.max(0, active.value - 1);
+  } else if (active.value === i) {
+    // if we closed the active tab, select the one at the same index (or previous if at end)
+    active.value = Math.min(i, sessions.value.length - 1);
   }
 }
 
@@ -138,9 +179,9 @@ onMounted(() => {
       <div id="titlebar">
         <div class="titlebar-left">
           <span id="title">NoTerm</span>
-          <TabBar :tabs="sessions.map(s => ({ id: String(s.ptyId ?? ''), title: s.title }))" :activeIndex="active"
+          <TabBar :tabs="sessions.map(s => ({ id: s.uid, title: s.title }))" :activeIndex="active"
             @update:activeIndex="(i) => active = i" @tab-click="(t) => console.log('tab-click', t)"
-            @add-tab="createTab('powershell')" />
+            @add-tab="createTab('powershell')" @close-tab="(i) => closeTab(i)" />
         </div>
         <div id="buttons">
           <span class="button minimize" @click="minimize"></span>
@@ -150,9 +191,9 @@ onMounted(() => {
 
       <div id="content">
         <div style="position:relative; width:100%; height:100%;">
-          <component v-for="(s, i) in sessions" :is="TerminalContainer" :key="i" :ptyId="s.ptyId ?? null"
-            :connected="webuiReady" @request-pty="(cols, rows) => onRequestPty(i, cols, rows)" :ref="setTerminalRef(i)"
-            v-show="active === i" />
+          <component v-for="(s, i) in sessions" :is="TerminalContainer" :key="s.uid" :ptyId="s.ptyId ?? null"
+            :connected="webuiReady" @request-pty="(cols, rows) => onRequestPty(i, cols, rows)"
+            :ref="setTerminalRef(s.uid)" v-show="active === i" />
         </div>
       </div>
     </div>

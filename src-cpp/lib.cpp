@@ -23,6 +23,7 @@
 #define NOTIFY_OUTPUT_CB_NAME "webui_output_available"
 #define WEB_RECEIVE_OUTPUT_CB_NAME "webui_receive_output"
 #define READY_CB_NAME "webui_ready"
+#define CLOSE_PTY_CB_NAME "webui_close_pty"
 #define MINIMIZE_CB_NAME "webui_minimize"
 #define CLOSE_CB_NAME "webui_close"
 
@@ -98,6 +99,18 @@ namespace {
             }
             m_consoles.clear();
             m_staged_outputs.clear();
+        }
+
+        // Close and remove a single PTY by id
+        void close(int id) {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            auto it = m_consoles.find(id);
+            if (it != m_consoles.end()) {
+                it->second->close();
+                m_consoles.erase(it);
+            }
+            // remove any staged output for this id
+            m_staged_outputs.erase(id);
         }
 
         // iterate IDs
@@ -201,6 +214,12 @@ void webui_main(webui::window& window, webui_context ctx, int* err) {
             memcpy(buf.data() + 4, out->data(), data_len);
             ev->get_window().send_raw(WEB_RECEIVE_OUTPUT_CB_NAME, buf.data(), static_cast<int>(buf.size()));
         }
+    });
+
+    // close a specific PTY: expects (id)
+    window.bind(CLOSE_PTY_CB_NAME, [](webui::window::event* ev) {
+        int id = ev->get_int(0);
+        PTYManager::instance().close(id);
     });
 
     window.bind(MINIMIZE_CB_NAME, [](webui::window::event* e) { webui_minimize(e->window); });
