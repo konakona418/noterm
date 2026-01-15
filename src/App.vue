@@ -55,15 +55,28 @@ function onRequestPty(index: number, cols: number, rows: number) {
   if (title.includes('powershell')) cmd = 'powershell.exe';
   else if (title.includes('bash')) cmd = 'bash';
   // send command as 4th argument
-  invoke('webui_init_terminal', cols, rows, token, cmd);
+  invoke('webui_init_terminal', cols, rows, token, cmd)
+    .then(() => {
+      console.log('Requested PTY creation for session', index, 'with token', token);
+    })
+    .catch((err) => {
+      console.error('Failed to request PTY creation:', err);
+    });
 }
 
 function onTabClick(i: number) {
   active.value = i;
 }
 
-const minimize = () => invoke('webui_minimize');
-const closeWin = () => invoke('webui_close');
+const minimize = () =>
+  invoke('webui_minimize').catch((err) => {
+    console.error('Failed to minimize window:', err);
+  });
+const closeWin = () =>
+  invoke('webui_close')
+    .catch((err) => {
+      console.error('Failed to close window:', err);
+    });
 
 function handleCreated(id: number, token: number) {
   const idx = pendingByToken.get(token);
@@ -79,7 +92,10 @@ function handleCreated(id: number, token: number) {
 function handleOutputAvailable(id: number) {
   // ask native to send the bytes for this PTY (native will respond via webui_receive_output)
   console.log('Output available for PTY id', id);
-  invoke('webui_pull_output', id);
+  invoke('webui_pull_output', id)
+    .catch((err) => {
+      console.error('Failed to pull output for PTY id', id, ':', err);
+    });
 }
 
 function handleReceiveOutput(data: Uint8Array) {
