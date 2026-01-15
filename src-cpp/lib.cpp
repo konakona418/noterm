@@ -177,9 +177,7 @@ void webui_main(webui::window& window, webui_context ctx, int* err) {
         }
         int id = PTYManager::instance().create(command, cols, rows);
         // Call back into JS with both id and token: webui_created_pty(id, token)
-        char created_buf[128];
-        std::snprintf(created_buf, sizeof(created_buf), CREATED_CB_NAME "(%d, %d);", id, token);
-        ev->get_window().run(created_buf);
+        ev->get_window().run_fmt(CREATED_CB_NAME "(%d, %d);", id, token);
     });
 
     // resize: expects (id, cols, rows)
@@ -244,10 +242,8 @@ void webui_main(webui::window& window, webui_context ctx, int* err) {
             for (int id: ids) {
                 // Stage available output without consuming it for the frontend
                 if (PTYManager::instance().stage_output_if_available(id)) {
-                    // Notify frontend that this PTY has output available; frontend should call webui_pull_output(id)
-                    char notify_buf[64];
-                    std::snprintf(notify_buf, sizeof(notify_buf), NOTIFY_OUTPUT_CB_NAME "(%d);", id);
-                    window.run(notify_buf);
+                    // Notify frontend that this PTY has output available; frontend should call webui_pull_output(id)NOTIFY_OUTPUT_CB_NAME "(%d);", id
+                    window.run_fmt(NOTIFY_OUTPUT_CB_NAME "(%d);", id);
                 }
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(10));

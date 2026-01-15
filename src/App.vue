@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
+import { Minimize2, X } from 'lucide-vue-next';
 import { invoke, callback } from './webui-ext';
 import TerminalContainer from './Components/TerminalContainer.vue';
 import TabBar from './Components/TabBar.vue';
 
-type Session = { uid: string; title: string; ptyId?: number | null };
+type Session = { uid: string; title: string; ptyId?: number | null; command?: string };
 
 const genUid = () => (typeof crypto !== 'undefined' && typeof (crypto as any).randomUUID === 'function') ? (crypto as any).randomUUID() : (Date.now().toString(36) + Math.random().toString(36).slice(2));
 
-const sessions = ref<Session[]>([{ uid: genUid(), title: 'powershell', ptyId: null }]);
+const sessions = ref<Session[]>([{ uid: genUid(), title: 'PowerShell', ptyId: null, command: 'powershell.exe' }]);
 const active = ref(0);
 
 // whether the native/webui connection is established
@@ -40,8 +41,22 @@ function setTerminalRef(uid: string) {
   };
 }
 
-function createTab(title = 'bash') {
-  sessions.value.push({ uid: genUid(), title, ptyId: null });
+function displayTitleFromCommand(command?: string) {
+  if (!command) return 'Shell';
+  const cmd = command.toLowerCase();
+  if (cmd.includes('pwsh')) return 'PowerShell';
+  if (cmd.includes('powershell')) return 'PowerShell';
+  if (cmd.includes('cmd')) return 'Command Prompt';
+  if (cmd.includes('bash') || cmd.includes('wsl')) return 'Bash';
+  return command.split(/[\\/\\\\ ]+/).pop() ?? 'Shell';
+}
+
+function createTab(command?: string) {
+  const cmd = command ?? 'powershell.exe';
+  const title = displayTitleFromCommand(cmd);
+  console.log('Creating tab with command:', cmd, 'title:', title);
+
+  sessions.value.push({ uid: genUid(), title, ptyId: null, command: cmd });
   // select the newly created tab
   active.value = sessions.value.length - 1;
 }
@@ -52,10 +67,8 @@ function onRequestPty(index: number, cols: number, rows: number) {
   pendingByToken.set(token, index);
   // Decide command based on session title and ask native to create a PTY with token;
   // native will call back with webui_created_pty(id, token)
-  const title = sessions.value[index]?.title?.toLowerCase() ?? '';
-  let cmd = 'powershell.exe';
-  if (title.includes('powershell')) cmd = 'powershell.exe';
-  else if (title.includes('bash')) cmd = 'bash';
+  const session = sessions.value[index];
+  const cmd = session?.command ?? 'powershell.exe';
   // send command as 4th argument
   invoke('webui_init_terminal', cols, rows, token, cmd)
     .then(() => {
@@ -177,11 +190,15 @@ onMounted(() => {
           <span id="title">NoTerm</span>
           <TabBar :tabs="sessions.map(s => ({ id: s.uid, title: s.title }))" :activeIndex="active"
             @update:activeIndex="(i) => active = i" @tab-click="(t) => console.log('tab-click', t)"
-            @add-tab="createTab('powershell')" @close-tab="(i) => closeTab(i)" />
+            @add-tab="(cmd) => createTab(cmd)" @close-tab="(i) => closeTab(i)" />
         </div>
         <div id="buttons">
-          <span class="button minimize" @click="minimize"></span>
-          <span class="button close" @click="closeWin"></span>
+          <button class="icon-btn" @click="minimize" aria-label="Minimize">
+            <Minimize2 :size="14" />
+          </button>
+          <button class="icon-btn" @click="closeWin" aria-label="Close">
+            <X :size="14" />
+          </button>
         </div>
       </div>
 
@@ -269,12 +286,17 @@ onMounted(() => {
   cursor: pointer;
 }
 
-.close {
-  background: #ff5f57;
+.icon-btn {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
+  padding: 6px;
+  border-radius: 6px;
+  cursor: pointer;
 }
 
-.minimize {
-  background: #ffbd2e;
+.icon-btn:hover {
+  color: #fff;
 }
 
 #content {

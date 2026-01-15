@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue';
+import { ref, watch, computed, onMounted, onBeforeUnmount } from 'vue';
+
+import { Plus, X, ChevronDown } from 'lucide-vue-next';
 
 const props = defineProps<{
     tabs?: Array<{ id?: string; title: string }>;
@@ -8,7 +10,7 @@ const props = defineProps<{
 const emitEvent = defineEmits<{
     (event: 'update:activeIndex', index: number): void;
     (event: 'tab-click', tab: { id?: string; title: string }): void;
-    (event: 'add-tab'): void;
+    (event: 'add-tab', command?: string): void;
     (event: 'close-tab', index: number): void;
 }>();
 
@@ -22,6 +24,21 @@ const localTabs = computed(() => props.tabs ?? defaultTabs);
 
 const active = ref(props.activeIndex ?? 0);
 watch(() => props.activeIndex, (v) => { if (typeof v === 'number') active.value = v; });
+// dropdown state for console selection
+const showConsoleMenu = ref(false);
+const menuRef = ref<HTMLElement | null>(null);
+const consoles = [
+    { id: 'powershell', label: 'PowerShell', command: 'powershell.exe' },
+    { id: 'cmd', label: 'Command Prompt (cmd)', command: 'cmd.exe' },
+];
+
+function onDocumentClick(e: MouseEvent) {
+    if (!menuRef.value) return;
+    if (!menuRef.value.contains(e.target as Node)) showConsoleMenu.value = false;
+}
+
+onMounted(() => document.addEventListener('click', onDocumentClick));
+onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick));
 
 function onTabClick(i: number) {
     active.value = i;
@@ -35,7 +52,15 @@ function onClose(i: number) {
 }
 
 function emitAddTab() {
-    emitEvent('add-tab');
+    // default add: powershell
+    emitEvent('add-tab', 'powershell.exe');
+}
+
+function emitAddTabWithCommand(cmd: string) {
+    console.log('Adding tab with command:', cmd);
+
+    emitEvent('add-tab', cmd);
+    showConsoleMenu.value = false;
 }
 </script>
 
@@ -45,11 +70,29 @@ function emitAddTab() {
             <li v-for="(t, i) in localTabs" :key="t.id ?? i" :class="['tab', { active: active === i }]"
                 @click="onTabClick(i)">
                 <span class="tab-title">{{ t.title }}</span>
-                <button class="tab-close" @click.stop="onClose(i)">×</button>
+                <button class="tab-close" @click.stop="onClose(i)">
+                    <X :size="14" />
+                </button>
             </li>
         </ul>
-        <div class="tab-actions">
-            <button class="tab-action" @click="emitAddTab">+</button>
+        <div class="tab-actions" ref="menuRef">
+            <div class="console-menu">
+                <button class="tab-action" @click="emitAddTab">
+                    <Plus :size="14" />
+                </button>
+                <button class="tab-action" @click.stop="showConsoleMenu = !showConsoleMenu" aria-haspopup="true"
+                    :aria-expanded="showConsoleMenu">
+                    <ChevronDown :size="14" />
+                </button>
+                <div v-if="showConsoleMenu" class="console-dropdown">
+                    <ul>
+                        <li v-for="c in consoles" :key="c.id">
+                            <button class="console-item" @click="emitAddTabWithCommand(c.command)">{{ c.label
+                            }}</button>
+                        </li>
+                    </ul>
+                </div>
+            </div>
         </div>
     </nav>
 </template>
@@ -131,8 +174,54 @@ function emitAddTab() {
     border-radius: 6px;
 }
 
+:deep(.tab-close svg),
+:deep(.tab-action svg) {
+    display: block;
+    color: inherit;
+}
+
 .tab-close:hover {
     background: rgba(255, 255, 255, 0.03);
     color: #fff;
+}
+
+.console-menu {
+    display: inline-flex;
+    position: relative;
+    gap: 6px;
+}
+
+.console-dropdown {
+    position: absolute;
+    right: 0;
+    top: 36px;
+    background: rgba(20, 20, 20, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    border-radius: 8px;
+    padding: 6px;
+    z-index: 1000;
+    min-width: 160px;
+}
+
+.console-dropdown ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.console-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 8px 10px;
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.9);
+    cursor: pointer;
+    border-radius: 6px;
+}
+
+.console-item:hover {
+    background: rgba(255, 255, 255, 0.02);
 }
 </style>
