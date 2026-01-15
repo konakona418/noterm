@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, computed, onMounted, onBeforeUnmount } from 'vue';
 
-import { Plus, X, ChevronDown } from 'lucide-vue-next';
+import { Plus, X, ChevronDown, Terminal } from 'lucide-vue-next';
 
 const props = defineProps<{
     tabs?: Array<{ id?: string; title: string }>;
@@ -47,6 +47,16 @@ function onTabClick(i: number) {
     emitEvent('tab-click', (localTabs.value as any)[i]);
 }
 
+function iconForTitle(title?: string) {
+    // return an object with component and optional class for styling
+    if (!title) return { comp: Terminal, cls: '' };
+    const t = title.toLowerCase();
+    if (t.includes('powershell') || t.includes('pwsh')) return { comp: Terminal, cls: 'pwsh' };
+    if (t.includes('command') || t.includes('cmd')) return { comp: Terminal, cls: '' };
+    if (t.includes('bash')) return { comp: Terminal, cls: '' };
+    return { comp: Terminal, cls: '' };
+}
+
 function onClose(i: number) {
     emitEvent('close-tab', i);
 }
@@ -69,20 +79,22 @@ function emitAddTabWithCommand(cmd: string) {
         <ul class="tab-list">
             <li v-for="(t, i) in localTabs" :key="t.id ?? i" :class="['tab', { active: active === i }]"
                 @click="onTabClick(i)">
+                <component :is="iconForTitle(t.title).comp" :class="['tab-icon', iconForTitle(t.title).cls]" :size="14"
+                    :stroke-width="4" />
                 <span class="tab-title">{{ t.title }}</span>
                 <button class="tab-close" @click.stop="onClose(i)">
-                    <X :size="14" />
+                    <X :size="14" :stroke-width="4" />
                 </button>
             </li>
         </ul>
         <div class="tab-actions" ref="menuRef">
             <div class="console-menu">
                 <button class="tab-action" @click="emitAddTab">
-                    <Plus :size="14" />
+                    <Plus :size="14" :stroke-width="4" />
                 </button>
                 <button class="tab-action" @click.stop="showConsoleMenu = !showConsoleMenu" aria-haspopup="true"
                     :aria-expanded="showConsoleMenu">
-                    <ChevronDown :size="14" />
+                    <ChevronDown :size="14" :stroke-width="4" />
                 </button>
                 <div v-if="showConsoleMenu" class="console-dropdown">
                     <ul>
@@ -116,6 +128,11 @@ function emitAddTabWithCommand(cmd: string) {
     -webkit-app-region: no-drag;
 }
 
+
+.tab-icon.pwsh {
+    color: #2e85e2;
+}
+
 .tab {
     display: inline-flex;
     align-items: center;
@@ -144,6 +161,12 @@ function emitAddTabWithCommand(cmd: string) {
 .tab-title {
     display: inline-block;
     padding-right: 2px;
+}
+
+.tab-icon {
+    margin-right: 6px;
+    color: rgba(255, 255, 255, 0.75);
+    display: inline-block;
 }
 
 .tab-actions {

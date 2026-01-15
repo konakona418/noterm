@@ -194,10 +194,10 @@ onMounted(() => {
         </div>
         <div id="buttons">
           <button class="icon-btn" @click="minimize" aria-label="Minimize">
-            <Minimize2 :size="14" />
+            <Minimize2 :size="14" :stroke-width="4" />
           </button>
           <button class="icon-btn" @click="closeWin" aria-label="Close">
-            <X :size="14" />
+            <X :size="14" :stroke-width="4" />
           </button>
         </div>
       </div>
