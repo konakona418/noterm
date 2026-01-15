@@ -6,6 +6,8 @@ VSCode has an integrated terminal and VSCode is based on Electron which is too h
 
 Mine is based on webview which is way much lighter
 
+VSCode and mine are both based on xterm.js
+
 Why not use mine
 
 ![image](/img/screenshot.png)
