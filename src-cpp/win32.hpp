@@ -69,6 +69,14 @@ namespace noterm {
                 return std::nullopt;
             }
 
+            std::optional<std::string> read_output_nonblocking() {
+                std::string output;
+                if (m_output_queue.try_dequeue(output)) {
+                    return output;
+                }
+                return std::nullopt;
+            }
+
         private:
             InputQueue m_input_queue;
             OutputQueue m_output_queue;

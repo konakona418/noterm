@@ -1,12 +1,17 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from "vue";
-import { invoke, callback } from "../webui-ext"
+import { onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { invoke } from "../webui-ext"
 
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
+
+const props = defineProps<{ ptyId?: number | null; connected?: boolean }>();
+const emit = defineEmits<{
+    (e: 'request-pty', cols: number, rows: number): void;
+}>();
 
 const terminalElement = ref<HTMLElement | null>(null);
 let terminal: Terminal | null = null;
@@ -25,7 +30,9 @@ function debounce(fn: Function, delay: number) {
 const handleResize = debounce(async () => {
     if (terminal && fitAddon) {
         fitAddon.fit();
-        await invoke("webui_resize_terminal", terminal.cols, terminal.rows);
+        if (props.ptyId != null) {
+            await invoke("webui_resize_terminal", props.ptyId, terminal.cols, terminal.rows);
+        }
     }
 }, 150);
 
@@ -59,31 +66,37 @@ onMounted(() => {
         terminal.loadAddon(webLinksAddon);
 
         terminal.open(terminalElement.value);
+
+        let ptyRequested = false;
         requestAnimationFrame(() => {
             if (fitAddon) {
                 fitAddon.fit();
             }
-        });
 
-        window.addEventListener("resize", handleResize);
-
-        terminal.onData(async (data) => {
-            await invoke("webui_send_input", data);
-            console.log("Terminal input:", data);
-        });
-
-        callback("webui_ready", async () => {
-            if (terminal) {
-                await invoke("webui_init_terminal", terminal.cols, terminal.rows);
-                fitAddon?.fit();
-                terminal.focus();
+            if (props.connected) {
+                emit('request-pty', terminal!.cols, terminal!.rows);
+                ptyRequested = true;
             }
         });
 
-        callback("webui_receive_output", async (output: Uint8Array) => {
-            console.log("Received output size:", output.byteLength);
-            terminal?.write(output);
+        // If connection wasn't ready at mount, request once it becomes ready.
+        watch(() => props.connected, (v) => {
+            if (v && !ptyRequested && terminal) {
+                emit('request-pty', terminal.cols, terminal.rows);
+                ptyRequested = true;
+            }
         });
+
+        window.addEventListener("resize", handleResize);
+        terminal.onData(async (data) => {
+            if (props.ptyId != null) {
+                await invoke("webui_send_input", props.ptyId, data);
+            }
+            console.log("Terminal input:", data);
+        });
+
+        // focus after creation
+        terminal.focus();
     }
 });
 
@@ -92,6 +105,13 @@ onBeforeUnmount(() => {
     webglAddon?.dispose();
     terminal?.dispose();
 });
+
+// expose a method to allow parent to push output bytes to this terminal instance
+function writeOutput(data: Uint8Array) {
+    terminal?.write(data);
+}
+
+defineExpose({ writeOutput });
 </script>
 
 <template>

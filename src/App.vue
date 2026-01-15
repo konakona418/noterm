@@ -1,16 +1,120 @@
 <script setup lang="ts">
-import { invoke } from './webui-ext';
+import { ref, onMounted } from 'vue';
+import { invoke, callback } from './webui-ext';
 import TerminalContainer from './Components/TerminalContainer.vue';
 import TabBar from './Components/TabBar.vue';
 
-const tabs = [
-  { id: '1', title: 'bash' },
-  { id: '2', title: 'PowerShell' },
-  { id: '3', title: '+' }
-];
+type Session = { title: string; ptyId?: number | null };
+
+const sessions = ref<Session[]>([{ title: 'powershell', ptyId: null }]);
+const active = ref(0);
+
+// whether the native/webui connection is established
+const webuiReady = ref(false);
+
+// pending requests keyed by token -> session index
+const pendingByToken = new Map<number, number>();
+const idToIndex = new Map<number, number>();
+let nextRequestToken = 1;
+
+const terminalRefs = ref<any[]>([]);
+// temporary buffer for outputs received before a terminal ref is ready
+const pendingOutput = new Map<number, Uint8Array[]>();
+
+function setTerminalRef(index: number) {
+  return (el: any) => {
+    terminalRefs.value[index] = el;
+    // if this session already has a ptyId, flush any pending output
+    const ptyId = sessions.value[index]?.ptyId;
+    if (ptyId != null) {
+      const pending = pendingOutput.get(ptyId);
+      if (pending && pending.length > 0 && el && typeof el.writeOutput === 'function') {
+        for (const chunk of pending) el.writeOutput(chunk);
+        pendingOutput.delete(ptyId);
+      }
+    }
+  };
+}
+
+function createTab(title = 'bash') {
+  sessions.value.push({ title, ptyId: null });
+  // select the newly created tab
+  active.value = sessions.value.length - 1;
+  // keep terminalRefs aligned
+  terminalRefs.value.push(null);
+}
+
+function onRequestPty(index: number, cols: number, rows: number) {
+  // Generate a token to correlate request/response
+  const token = nextRequestToken++;
+  pendingByToken.set(token, index);
+  // Decide command based on session title and ask native to create a PTY with token;
+  // native will call back with webui_created_pty(id, token)
+  const title = sessions.value[index]?.title?.toLowerCase() ?? '';
+  let cmd = 'powershell.exe';
+  if (title.includes('powershell')) cmd = 'powershell.exe';
+  else if (title.includes('bash')) cmd = 'bash';
+  // send command as 4th argument
+  invoke('webui_init_terminal', cols, rows, token, cmd);
+}
+
+function onTabClick(i: number) {
+  active.value = i;
+}
 
 const minimize = () => invoke('webui_minimize');
 const closeWin = () => invoke('webui_close');
+
+function handleCreated(id: number, token: number) {
+  const idx = pendingByToken.get(token);
+  if (idx === undefined) {
+    console.warn('Received created PTY id with unknown token:', id, token);
+    return;
+  }
+  pendingByToken.delete(token);
+  sessions.value[idx].ptyId = id;
+  idToIndex.set(id, idx);
+}
+
+function handleOutputAvailable(id: number) {
+  // ask native to send the bytes for this PTY (native will respond via webui_receive_output)
+  console.log('Output available for PTY id', id);
+  invoke('webui_pull_output', id);
+}
+
+function handleReceiveOutput(data: Uint8Array) {
+  if (data.byteLength < 4) return;
+  const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const id = dv.getInt32(0, true);
+  const payload = new Uint8Array(data.buffer, data.byteOffset + 4, data.byteLength - 4);
+  const idx = idToIndex.get(id);
+
+  console.log('Received output for PTY id', id, 'mapped to session index', idx);
+
+  if (idx === undefined) return;
+  const child = terminalRefs.value[idx];
+  if (child && typeof child.writeOutput === 'function') {
+    child.writeOutput(payload);
+  } else {
+    console.warn('No terminal ref or writeOutput method for session index', idx, '- buffering output');
+    // buffer until the component ref is ready
+    const ptyId = id;
+    const arr = pendingOutput.get(ptyId) ?? [];
+    arr.push(payload);
+    pendingOutput.set(ptyId, arr);
+  }
+}
+
+onMounted(() => {
+  callback('webui_created_pty', (id: number, token: number) => handleCreated(id, token));
+  callback('webui_output_available', (id: number) => handleOutputAvailable(id));
+  callback('webui_receive_output', (data: Uint8Array) => handleReceiveOutput(data));
+  callback('webui_ready', () => {
+    console.log('webui ready');
+    webuiReady.value = true;
+  });
+});
+
 </script>
 <template>
   <div class="window-wrapper">
@@ -18,7 +122,9 @@ const closeWin = () => invoke('webui_close');
       <div id="titlebar">
         <div class="titlebar-left">
           <span id="title">NoTerm</span>
-          <TabBar :tabs="tabs" />
+          <TabBar :tabs="sessions.map(s => ({ id: String(s.ptyId ?? ''), title: s.title }))" :activeIndex="active"
+            @update:activeIndex="(i) => active = i" @tab-click="(t) => console.log('tab-click', t)"
+            @add-tab="createTab('powershell')" />
         </div>
         <div id="buttons">
           <span class="button minimize" @click="minimize"></span>
@@ -27,7 +133,11 @@ const closeWin = () => invoke('webui_close');
       </div>
 
       <div id="content">
-        <TerminalContainer />
+        <div style="position:relative; width:100%; height:100%;">
+          <component v-for="(s, i) in sessions" :is="TerminalContainer" :key="i" :ptyId="s.ptyId ?? null"
+            :connected="webuiReady" @request-pty="(cols, rows) => onRequestPty(i, cols, rows)" :ref="setTerminalRef(i)"
+            v-show="active === i" />
+        </div>
       </div>
     </div>
   </div>

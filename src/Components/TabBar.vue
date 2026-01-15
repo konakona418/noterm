@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { ref, watch, computed } from 'vue';
 
 const props = defineProps<{
     tabs?: Array<{ id?: string; title: string }>;
@@ -8,13 +8,16 @@ const props = defineProps<{
 const emitEvent = defineEmits<{
     (event: 'update:activeIndex', index: number): void;
     (event: 'tab-click', tab: { id?: string; title: string }): void;
+    (event: 'add-tab'): void;
 }>();
 
-const localTabs = props.tabs ?? [
+const defaultTabs = [
     { id: '1', title: 'bash' },
     { id: '2', title: 'PowerShell' },
     { id: '3', title: 'New Tab' }
 ];
+
+const localTabs = computed(() => props.tabs ?? defaultTabs);
 
 const active = ref(props.activeIndex ?? 0);
 watch(() => props.activeIndex, (v) => { if (typeof v === 'number') active.value = v; });
@@ -22,7 +25,12 @@ watch(() => props.activeIndex, (v) => { if (typeof v === 'number') active.value 
 function onTabClick(i: number) {
     active.value = i;
     emitEvent('update:activeIndex', i);
-    emitEvent('tab-click', localTabs[i]);
+    // localTabs is computed, need to read value
+    emitEvent('tab-click', (localTabs.value as any)[i]);
+}
+
+function emitAddTab() {
+    emitEvent('add-tab');
 }
 </script>
 
@@ -35,7 +43,7 @@ function onTabClick(i: number) {
             </li>
         </ul>
         <div class="tab-actions">
-            <button class="tab-action">⌄</button>
+            <button class="tab-action" @click="emitAddTab">+</button>
         </div>
     </nav>
 </template>
