@@ -48,6 +48,24 @@ onMounted(() => {
             theme: {
                 background: '#00000000',
                 foreground: '#FFFFFF',
+
+                black: "#1a1b26",
+                red: "#ff5f87",
+                green: "#00ff9f",
+                yellow: "#ffef7d",
+                blue: "#2ac3de",
+                magenta: "#bb9af7",
+                cyan: "#7dcfff",
+                white: "#cfc9c2",
+
+                brightBlack: "#414868",
+                brightRed: "#ff0055",
+                brightGreen: "#b9f27c",
+                brightYellow: "#e0af68",
+                brightBlue: "#7aa2f7",
+                brightMagenta: "#ff00ff",
+                brightCyan: "#00ffff",
+                brightWhite: "#ffffff",
             },
         });
 
