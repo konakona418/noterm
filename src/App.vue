@@ -241,7 +241,7 @@ onMounted(() => {
   flex: 1;
   display: flex;
   flex-direction: column;
-  background: rgba(30, 30, 30, 0.8);
+  background: rgba(30, 30, 30, 0.7);
   border-radius: 12px;
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
@@ -250,10 +250,10 @@ onMounted(() => {
 }
 
 #titlebar {
-  height: 56px;
-  background: rgba(0, 0, 0, 0.1);
+  height: 40px;
+  background: rgba(0, 0, 0, 0.2);
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
   padding: 0 12px;
   flex-shrink: 0;

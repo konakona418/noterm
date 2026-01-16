@@ -96,13 +96,15 @@ function emitAddTabWithCommand(cmd: string) {
                     :aria-expanded="showConsoleMenu">
                     <ChevronDown :size="14" :stroke-width="4" />
                 </button>
-                <div v-if="showConsoleMenu" class="console-dropdown">
-                    <ul>
-                        <li v-for="c in consoles" :key="c.id">
-                            <button class="console-item" @click="emitAddTabWithCommand(c.command)">{{ c.label
-                            }}</button>
-                        </li>
-                    </ul>
+                <div v-if="showConsoleMenu">
+                    <div class="console-dropdown">
+                        <ul>
+                            <li v-for="c in consoles" :key="c.id">
+                                <button class="console-item" @click="emitAddTabWithCommand(c.command)">
+                                    {{ c.label }}</button>
+                            </li>
+                        </ul>
+                    </div>
                 </div>
             </div>
         </div>
@@ -153,7 +155,7 @@ function emitAddTabWithCommand(cmd: string) {
 }
 
 .tab.active {
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02));
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.2));
     color: #fff;
     box-shadow: 0 -2px 0 rgba(255, 255, 255, 0.03) inset;
 }
@@ -177,13 +179,12 @@ function emitAddTabWithCommand(cmd: string) {
     background: transparent;
     border: none;
     color: rgba(255, 255, 255, 0.6);
-    padding: 6px 8px;
+    padding: 0 8px;
     border-radius: 6px;
     cursor: pointer;
 }
 
 .tab-action:hover {
-    background: rgba(255, 255, 255, 0.02);
     color: #fff;
 }
 
@@ -204,32 +205,56 @@ function emitAddTabWithCommand(cmd: string) {
 }
 
 .tab-close:hover {
-    background: rgba(255, 255, 255, 0.03);
     color: #fff;
 }
 
 .console-menu {
     display: inline-flex;
     position: relative;
+    align-items: flex-end;
     gap: 6px;
 }
 
 .console-dropdown {
     position: absolute;
     right: 0;
-    top: 36px;
-    background: rgba(20, 20, 20, 0.95);
-    border: 1px solid rgba(255, 255, 255, 0.04);
+    top: 24px;
     border-radius: 8px;
     padding: 6px;
     z-index: 1000;
     min-width: 160px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    background: rgba(30, 30, 30, 0.6);
 }
 
 .console-dropdown ul {
     margin: 0;
     padding: 0;
     list-style: none;
+}
+
+.console-dropdown::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: rgba(0, 0, 0, 0.2);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+    z-index: 0;
+}
+
+.console-dropdown::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.04;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64'><filter id='n'><feTurbulence baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='0.6' fill='white'/></svg>");
+    background-repeat: repeat;
+    z-index: 0;
 }
 
 .console-item {
@@ -242,6 +267,9 @@ function emitAddTabWithCommand(cmd: string) {
     color: rgba(255, 255, 255, 0.9);
     cursor: pointer;
     border-radius: 6px;
+    position: relative;
+    z-index: 1;
+    /* ensure controls sit above the frosted pseudo-layers */
 }
 
 .console-item:hover {
