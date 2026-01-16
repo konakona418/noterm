@@ -5,15 +5,16 @@
 #endif
 
 #include "lib.hpp"
-#include <chrono>
 #include <cstdio>
 #include <cstring>
+#include <functional>
 #include <iostream>
 #include <map>
 #include <memory>
 #include <optional>
 #include <thread>
 #include <vector>
+
 
 #define INIT_CB_NAME "webui_init_terminal"
 #define RESIZE_CB_NAME "webui_resize_terminal"
@@ -41,6 +42,40 @@ namespace {
             auto p = std::make_unique<noterm::detail::PseudoConsole>();
             p->init(command.c_str(), cols, rows);
             m_consoles[id] = std::move(p);
+
+            m_running.store(true);
+
+            // start a dedicated thread to block on this PTY's output
+            m_threads[id] = std::thread([this, id]() {
+                while (m_running.load()) {
+                    noterm::detail::PseudoConsole* pc = nullptr;
+                    {
+                        std::lock_guard<std::mutex> lock(m_mutex);
+                        auto it = m_consoles.find(id);
+                        if (it == m_consoles.end()) {
+                            break;// console removed
+                        }
+                        pc = it->second.get();
+                    }
+
+                    // blocking read; will be unblocked when console is closed (sentinel)
+                    auto out = pc->read_output();
+
+
+                    if (out.has_value() && !out->empty()) {
+                        // append to staged buffer
+                        std::function<void(int)> cb;
+                        {
+                            std::lock_guard<std::mutex> lock(m_mutex);
+                            m_staged_outputs[id].append(*out);
+                            cb = m_notify_cb;
+                        }
+                        // notify outside lock
+                        if (cb) cb(id);
+                    }
+                }
+            });
+
             return id;
         }
 
@@ -93,24 +128,57 @@ namespace {
         }
 
         void close_all() {
-            std::lock_guard<std::mutex> lock(m_mutex);
-            for (auto& kv: m_consoles) {
-                kv.second->close();
+            // close consoles first to wake threads
+            {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                for (auto& kv: m_consoles) {
+                    kv.second->close();
+                }
             }
+
+            m_running.store(false);
+
+            // join threads
+            for (auto& kv: m_threads) {
+                if (kv.second.joinable()) kv.second.join();
+            }
+
+            std::lock_guard<std::mutex> lock(m_mutex);
             m_consoles.clear();
             m_staged_outputs.clear();
+            m_threads.clear();
         }
 
         // Close and remove a single PTY by id
         void close(int id) {
+            // first, close the console to wake blocking reads
+            {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                auto it = m_consoles.find(id);
+                if (it != m_consoles.end()) {
+                    it->second->close();
+                }
+            }
+
+            // join and remove thread
+            auto tit = m_threads.find(id);
+            if (tit != m_threads.end()) {
+                if (tit->second.joinable()) tit->second.join();
+                m_threads.erase(tit);
+            }
+
+            // now remove console and staged outputs
             std::lock_guard<std::mutex> lock(m_mutex);
             auto it = m_consoles.find(id);
             if (it != m_consoles.end()) {
-                it->second->close();
                 m_consoles.erase(it);
             }
-            // remove any staged output for this id
             m_staged_outputs.erase(id);
+        }
+
+        void set_notify_callback(std::function<void(int)> cb) {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_notify_cb = std::move(cb);
         }
 
         // iterate IDs
@@ -128,12 +196,15 @@ namespace {
         std::mutex m_mutex;
         std::map<int, std::unique_ptr<noterm::detail::PseudoConsole>> m_consoles;
         std::map<int, std::string> m_staged_outputs;
+        std::map<int, std::thread> m_threads;
+        std::function<void(int)> m_notify_cb;
+        std::atomic_bool m_running{false};
         int m_last_id = 0;
     };
 }// namespace
 
 static std::atomic_bool running = false;
-static std::thread monitor_thread;
+static std::mutex webui_send_mutex;
 
 void cleanup() {
     std::cout << "Cleaning up PTYs..." << std::endl;
@@ -144,7 +215,6 @@ void cleanup() {
     }
 
     running.store(false);
-    if (monitor_thread.joinable()) monitor_thread.join();
     PTYManager::instance().close_all();
 
     std::cout << "PTYs cleaned up." << std::endl;
@@ -234,19 +304,12 @@ void webui_main(webui::window& window, webui_context ctx, int* err) {
         }
     });
 
-    // monitor and notify frontend of output availability
+    // register notify callback so per-PTY threads can alert the frontend
+    PTYManager::instance()
+            .set_notify_callback(
+                    [&window](int id) {
+                        std::lock_guard<std::mutex> lk(webui_send_mutex);
+                        window.run_fmt(NOTIFY_OUTPUT_CB_NAME "(%d);", id);
+                    });
     running.store(true);
-    monitor_thread = std::thread([&window]() {
-        while (running.load()) {
-            auto ids = PTYManager::instance().ids();
-            for (int id: ids) {
-                // Stage available output without consuming it for the frontend
-                if (PTYManager::instance().stage_output_if_available(id)) {
-                    // Notify frontend that this PTY has output available; frontend should call webui_pull_output(id)NOTIFY_OUTPUT_CB_NAME "(%d);", id
-                    window.run_fmt(NOTIFY_OUTPUT_CB_NAME "(%d);", id);
-                }
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        }
-    });
 }
