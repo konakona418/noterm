@@ -24,6 +24,7 @@ const localTabs = computed(() => props.tabs ?? defaultTabs);
 
 const active = ref(props.activeIndex ?? 0);
 watch(() => props.activeIndex, (v) => { if (typeof v === 'number') active.value = v; });
+const tabListRef = ref<HTMLElement | null>(null);
 // dropdown state for console selection
 const showConsoleMenu = ref(false);
 const menuRef = ref<HTMLElement | null>(null);
@@ -37,8 +38,34 @@ function onDocumentClick(e: MouseEvent) {
     if (!menuRef.value.contains(e.target as Node)) showConsoleMenu.value = false;
 }
 
-onMounted(() => document.addEventListener('click', onDocumentClick));
-onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick));
+// attach wheel-to-scroll behavior for horizontal scrolling
+onMounted(() => {
+    document.addEventListener('click', onDocumentClick);
+    const el = tabListRef.value;
+    if (el) {
+        const onWheel = (e: WheelEvent) => {
+            // only intercept vertical wheel when horizontal scrollable
+            if (Math.abs(e.deltaY) > 0) {
+                // if content is wider than container
+                if (el.scrollWidth > el.clientWidth) {
+                    e.preventDefault();
+                    el.scrollLeft += e.deltaY;
+                }
+            }
+        };
+        el.addEventListener('wheel', onWheel, { passive: false });
+        // store handler for cleanup
+        (el as any).__onWheel = onWheel;
+    }
+});
+onBeforeUnmount(() => {
+    document.removeEventListener('click', onDocumentClick);
+    const el = tabListRef.value;
+    if (el && (el as any).__onWheel) {
+        el.removeEventListener('wheel', (el as any).__onWheel as EventListener);
+        delete (el as any).__onWheel;
+    }
+});
 
 function onTabClick(i: number) {
     active.value = i;
@@ -76,7 +103,7 @@ function emitAddTabWithCommand(cmd: string) {
 
 <template>
     <nav class="tabbar">
-        <ul class="tab-list">
+        <ul class="tab-list" ref="tabListRef">
             <li v-for="(t, i) in localTabs" :key="t.id ?? i" :class="['tab', { active: active === i }]"
                 @click="onTabClick(i)">
                 <component :is="iconForTitle(t.title).comp" :class="['tab-icon', iconForTitle(t.title).cls]" :size="14"
@@ -118,6 +145,7 @@ function emitAddTabWithCommand(cmd: string) {
     gap: 12px;
     padding: 0px 12px;
     background: transparent;
+    max-width: 100%;
 }
 
 .tab-list {
@@ -128,6 +156,22 @@ function emitAddTabWithCommand(cmd: string) {
     padding: 0;
     align-items: center;
     -webkit-app-region: no-drag;
+    overflow-x: auto;
+    overflow-y: hidden;
+    white-space: nowrap;
+    flex: 1 1 auto;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
+    min-width: 0;
+    max-width: 100%;
+    /* allow flex child to shrink and enable overflow */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.tab-list::-webkit-scrollbar {
+    display: none;
+    height: 0;
 }
 
 
@@ -147,6 +191,8 @@ function emitAddTabWithCommand(cmd: string) {
     user-select: none;
     background: transparent;
     transition: background 120ms ease, color 120ms ease;
+    flex: 0 0 auto;
+    /* prevent shrinking so tabs keep size during scroll */
 }
 
 .tab:hover {
@@ -173,6 +219,8 @@ function emitAddTabWithCommand(cmd: string) {
 
 .tab-actions {
     margin-left: auto;
+    flex: 0 0 auto;
+    /* keep action area visible and prevent being pushed out */
 }
 
 .tab-action {

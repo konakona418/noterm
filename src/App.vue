@@ -266,6 +266,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
+  max-width: calc(100% - 175px);
 }
 
 #title {
